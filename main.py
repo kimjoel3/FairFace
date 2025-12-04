@@ -14,6 +14,8 @@ import torch.backends.cudnn as cudnn
 cudnn.benchmark = True
 torch.backends.cudnn.enabled = True
 
+
+
 class FER2013Dataset(Dataset):
     """Dataset class for FER2013 emotion recognition dataset"""
     
