@@ -223,7 +223,7 @@ def evaluate_model(model, test_loader, device='cuda'):
     emotion_names = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
     
     with torch.no_grad():
-            test_bar = tqdm(test_loader, desc='Testing')
+        test_bar = tqdm(test_loader, desc='Testing')
         for images, labels in test_bar:
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             
@@ -246,13 +246,44 @@ def evaluate_model(model, test_loader, device='cuda'):
     
     return accuracy
 
+class BaselineCNN(cnn.Module):
+    def __init__(self, num_classes = 7):
+        super(BaselineCNN, self).__init__
+
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size = 3, padding = 1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(32, 64, kernel_size = 3, padding = 1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(128, 256, kernel_size = 3, padding = 1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(256 * 14 * 14, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        return x
 
 def main():
     # Configuration
     DATA_DIR = 'FER2013'
     TRAIN_DIR = os.path.join(DATA_DIR, 'train')
     TEST_DIR = os.path.join(DATA_DIR, 'test')
-    BATCH_SIZE = 64  # Increased batch size for better GPU utilization
+    BATCH_SIZE = 15  # Increased batch size for better GPU utilization, decreased for debugging
     NUM_EPOCHS = 50
     LEARNING_RATE = 0.001
     # Optimize num_workers based on CPU cores
@@ -338,15 +369,26 @@ def main():
         prefetch_factor=2 if NUM_WORKERS > 0 else None
     )
     
-    # Create model
-    print('Creating MobileNetV2 model...')
-    model = EmotionRecognizer(num_classes=7, pretrained=True)
-    model = model.to(device)
+    # Create model (MobileNetV2, commenting this out for baseline CNN)
+    # print('Creating MobileNetV2 model...')
+    # model = EmotionRecognizer(num_classes=7, pretrained=True)
+    # model = model.to(device)
+
     
     # Compile model for faster training (PyTorch 2.0+)
-    if hasattr(torch, 'compile') and device.type == 'cuda':
-        print('Compiling model for faster training...')
-        model = torch.compile(model, mode='reduce-overhead')
+    #if hasattr(torch, 'compile') and device.type == 'cuda':
+    #    print('Compiling model for faster training...')
+   #     model = torch.compile(model, mode='reduce-overhead')
+
+   # --- BASELINE CNN ---
+   print('Creating baseline CNN model...')
+   model = BaselineCNN(num_classes = 7).to(device)
+   
+   if hasattr(torch, 'compile') and device.type == 'cuda':
+       model = torch.compile(model, mode='reduce-overhead')
+
+
+    # -------------- #
     
     # Print model summary
     total_params = sum(p.numel() for p in model.parameters())
@@ -367,7 +409,7 @@ def main():
     
     # Load best model and evaluate on test set
     print('Loading best model for testing...')
-    checkpoint = torch.load('best_emotion_model.pth')
+    checkpoint = torch.load('best_emotion_model.pth', map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     
     print('\nEvaluating on test set...')
